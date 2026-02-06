@@ -1,0 +1,20 @@
+# Environment & secrets
+.env
+
+# Logs
+logs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Papers
+papers_pdfs/
