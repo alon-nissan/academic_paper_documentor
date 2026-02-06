@@ -63,6 +63,14 @@ def _prop_url(value: Optional[str]) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _normalize_title(title: str) -> str:
+    """Normalize a title for comparison by removing extra whitespace and newlines."""
+    import re
+    # Replace newlines and multiple spaces with single space
+    normalized = re.sub(r'\s+', ' ', title)
+    return normalized.strip().lower()
+
+
 def check_duplicate(title: str, url: Optional[str] = None) -> Optional[str]:
     """Query Notion for a page whose Title matches *title* (case-insensitive).
 
@@ -73,6 +81,8 @@ def check_duplicate(title: str, url: Optional[str] = None) -> Optional[str]:
         return None
 
     logger.info("Checking duplicate for title: %r", title)
+    normalized_title = _normalize_title(title)
+
     try:
         resp = requests.post(
             f"{_BASE_URL}/databases/{NOTION_DATABASE_ID}/query",
@@ -82,7 +92,7 @@ def check_duplicate(title: str, url: Optional[str] = None) -> Optional[str]:
                     "property": "Title",
                     "title": {"contains": title[:100]},
                 },
-                "page_size": 5,
+                "page_size": 10,  # Increased to catch more potential matches
             },
             timeout=15,
         )
@@ -93,8 +103,10 @@ def check_duplicate(title: str, url: Optional[str] = None) -> Optional[str]:
                 page.get("properties", {}).get("Title", {}).get("title", [])
             )
             page_title = title_blocks[0]["text"]["content"] if title_blocks else ""
-            if page_title.strip().lower() == title.strip().lower():
-                logger.info("Duplicate found: %s", page.get("url"))
+            normalized_page_title = _normalize_title(page_title)
+
+            if normalized_page_title == normalized_title:
+                logger.info("Duplicate found: %s (matched: %r)", page.get("url"), page_title)
                 return page.get("url")
 
     except Exception as exc:  # noqa: BLE001 — must never crash the pipeline
