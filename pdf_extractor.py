@@ -68,7 +68,19 @@ def download_pdf(url: str) -> str:
             url += ".pdf"
         logger.info("Converted arXiv URL → %s", url)
 
-    headers = {"User-Agent": "Mozilla/5.0 (compatible; PaperProcessor/1.0)"}
+    # Try to convert ScienceDirect abstract URLs to PDF URLs
+    # Note: This may still fail due to paywall/authentication
+    if "sciencedirect.com" in url and "/abs/" in url:
+        url = url.replace("/abs/", "/")
+        if not url.endswith("/pdfft"):
+            url = url.rstrip("/") + "/pdfft"
+        logger.info("Converted ScienceDirect URL → %s", url)
+        logger.warning("ScienceDirect PDFs often require subscription access")
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/pdf,*/*",
+    }
     last_error: Optional[Exception] = None
 
     for attempt in range(1, REQUEST_RETRY_COUNT + 1):
@@ -91,9 +103,31 @@ def download_pdf(url: str) -> str:
             if attempt < REQUEST_RETRY_COUNT:
                 time.sleep(REQUEST_RETRY_DELAY)
 
-    raise RuntimeError(
-        f"Download failed after {REQUEST_RETRY_COUNT} attempts: {last_error}"
-    )
+    # Provide helpful error message based on the error type
+    error_msg = f"Download failed after {REQUEST_RETRY_COUNT} attempts: {last_error}"
+
+    # Check for common publisher issues
+    if "403" in str(last_error) or "Forbidden" in str(last_error):
+        if "sciencedirect.com" in url:
+            error_msg += (
+                "\n\n  ScienceDirect blocks automated downloads."
+                "\n  → Try using the DOI instead: python paper_processor.py --doi 10.xxxx/xxxxx"
+                "\n  → Or download the PDF manually and use: python paper_processor.py --pdf file.pdf"
+            )
+        else:
+            error_msg += (
+                "\n\n  This URL appears to be blocked (403 Forbidden)."
+                "\n  → The paper may be paywalled or behind bot protection"
+                "\n  → Try using --doi if you have the paper's DOI"
+                "\n  → Or download manually and use --pdf"
+            )
+    elif "404" in str(last_error):
+        error_msg += (
+            "\n\n  URL not found (404). Check that the URL is correct."
+            "\n  → Make sure it's a direct PDF link, not an abstract page"
+        )
+
+    raise RuntimeError(error_msg)
 
 
 def resolve_doi_to_pdf(doi: str) -> str:
